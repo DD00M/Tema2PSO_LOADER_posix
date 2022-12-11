@@ -22,6 +22,7 @@ static void segv_handler(int signum, siginfo_t *info, void *context)
 {
 	/* TODO - actual loader implementation */
 	int flag = 0;
+	int index = 0;
 	struct sigaction sa;
 	if (signum != SIGSEGV)
 	{
@@ -37,57 +38,62 @@ static void segv_handler(int signum, siginfo_t *info, void *context)
 			flag = 1;
 			if (info->si_code == SEGV_MAPERR)
 			{
-				int page_nr = (int)(psi_addr - exec->segments[i].vaddr) / page_size;
-				int page_distance = page_nr * page_size;
-				if (page_nr < 0)
-				{
-					printf("bad page_nr ...weird\n");
-					return;
-				}
-				void *addr_to_map = (void *)(exec->segments[i].vaddr + page_distance);
-				void *p = mmap(addr_to_map, page_size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-				if (p == MAP_FAILED)
-				{
-					printf("mmap failed segv_handler\n");
-				}
-				lseek(fd, 0, SEEK_SET);
-				lseek(fd, exec->segments[i].offset + page_distance, SEEK_SET);
-				if (page_distance > exec->segments[i].file_size && page_distance < exec->segments[i].mem_size){
-					memset(p, 0, page_size);
-				}
-				else if (exec->segments[i].file_size - page_distance < page_size)
-				{
-					rc = read(fd, p, exec->segments[i].file_size - page_distance);
-					if (rc < 0)
-					{
-						printf("bad read 1\n");
-						return;
-					}
-				}
-				else
-				{
-					rc = read(fd, p, page_size);
-					if (rc < 0)
-					{
-						printf("bad read 2\n");
-						return;
-					}
-				}
-				rc = mprotect(p, page_size, exec->segments[i].perm);
-				if (rc == -1)
-				{
-					printf("mprotect error\n");
-					return;
-				}
-				return;
-			}else if(info->si_code == SEGV_ACCERR){
+				index = i;
+				break;
+			}
+			else if (info->si_code == SEGV_ACCERR)
+			{
 				sa.sa_sigaction(signum, info, context);
 				return;
 			}
 		}
 	}
-	if (flag == 0){
-		sa.sa_sigaction(signum, info, context);return;
+	int page_nr = (int)(psi_addr - exec->segments[index].vaddr) / page_size;
+	int page_distance = page_nr * page_size;
+	if (page_nr < 0)
+	{
+		printf("bad page_nr ...weird\n");
+		return;
+	}
+	void *addr_to_map = (void *)(exec->segments[index].vaddr + page_distance);
+	void *p = mmap(addr_to_map, page_size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	if (p == MAP_FAILED)
+	{
+		printf("mmap failed segv_handler\n");
+	}
+	lseek(fd, exec->segments[index].offset + page_distance, SEEK_SET);
+	if (page_distance > exec->segments[index].file_size && page_distance < exec->segments[index].mem_size)
+	{
+		memset(p, 0, page_size);
+	}
+	else if (exec->segments[index].file_size - page_distance < page_size)
+	{
+		rc = read(fd, p, exec->segments[index].file_size - page_distance);
+		if (rc < 0)
+		{
+			printf("bad read 1\n");
+			return;
+		}
+	}
+	else
+	{
+		rc = read(fd, p, page_size);
+		if (rc < 0)
+		{
+			printf("bad read 2\n");
+			return;
+		}
+	}
+	rc = mprotect(p, page_size, exec->segments[index].perm);
+	if (rc == -1)
+	{
+		printf("mprotect error\n");
+		return;
+	}
+	if (flag == 0)
+	{
+		sa.sa_sigaction(signum, info, context);
+		return;
 	}
 }
 
